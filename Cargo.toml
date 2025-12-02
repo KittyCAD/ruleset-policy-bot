@@ -1,0 +1,20 @@
+[package]
+name = "ruleset-policy-bot"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+default = ["rustls"]
+rustls = ["octocrab/rustls", "octocrab/rustls-webpki-tokio", "octocrab/rustls-aws-lc-rs"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+octocrab = { version = "0.48", default-features = false, features = ["default-client"] }
+slack-morphism = "2"
+chrono = "0.4"
+anyhow = "1"
+schemars = "1.1"
+tracing = "0.1"
+serde_json = "1"
+async-trait = "0.1"
+jsonwebtoken = "10"

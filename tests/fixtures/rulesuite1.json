@@ -1,0 +1,181 @@
+{
+  "id": 1023523815,
+  "actor_id": 1445228,
+  "actor_name": "jessfraz",
+  "before_sha": "7b2d48e0eefbfcb6398420784513022a3641f179",
+  "after_sha": "263533cd1b26c90be8b5b5a8a1c996aa2174e3be",
+  "ref": "refs/heads/main",
+  "repository_id": 417640584,
+  "repository_name": "my_repo",
+  "pushed_at": "2025-05-19T01:02:13+02:00",
+  "result": "pass",
+  "evaluation_result": "pass",
+  "rule_evaluations": [
+    {
+      "rule_source": {
+        "type": "protected_branch"
+      },
+      "enforcement": "active",
+      "result": "pass",
+      "rule_type": "deletion"
+    },
+    {
+      "rule_source": {
+        "type": "protected_branch"
+      },
+      "enforcement": "active",
+      "result": "pass",
+      "rule_type": "non_fast_forward"
+    },
+    {
+      "rule_source": {
+        "type": "ruleset",
+        "id": 3757757,
+        "name": "Default branch - reasonable (evaluate)"
+      },
+      "enforcement": "evaluate",
+      "result": "pass",
+      "rule_type": "pull_request"
+    },
+    {
+      "rule_source": {
+        "type": "ruleset",
+        "id": 3757757,
+        "name": "Default branch - reasonable (evaluate)"
+      },
+      "enforcement": "evaluate",
+      "result": "pass",
+      "rule_type": "required_linear_history"
+    },
+    {
+      "rule_source": {
+        "type": "ruleset",
+        "id": 3757757,
+        "name": "Default branch - reasonable (evaluate)"
+      },
+      "enforcement": "evaluate",
+      "result": "pass",
+      "rule_type": "creation"
+    },
+    {
+      "rule_source": {
+        "type": "ruleset",
+        "id": 3757757,
+        "name": "Default branch - reasonable (evaluate)"
+      },
+      "enforcement": "evaluate",
+      "result": "pass",
+      "rule_type": "deletion"
+    },
+    {
+      "rule_source": {
+        "type": "ruleset",
+        "id": 3757757,
+        "name": "Default branch - reasonable (evaluate)"
+      },
+      "enforcement": "evaluate",
+      "result": "pass",
+      "rule_type": "non_fast_forward"
+    },
+    {
+      "rule_source": {
+        "type": "ruleset",
+        "id": 3973005,
+        "name": "Default branch - reasonable (admin bypass)"
+      },
+      "enforcement": "active",
+      "result": "pass",
+      "rule_type": "pull_request"
+    },
+    {
+      "rule_source": {
+        "type": "ruleset",
+        "id": 3973005,
+        "name": "Default branch - reasonable (admin bypass)"
+      },
+      "enforcement": "active",
+      "result": "pass",
+      "rule_type": "required_linear_history"
+    },
+    {
+      "rule_source": {
+        "type": "ruleset",
+        "id": 3973005,
+        "name": "Default branch - reasonable (admin bypass)"
+      },
+      "enforcement": "active",
+      "result": "pass",
+      "rule_type": "creation"
+    },
+    {
+      "rule_source": {
+        "type": "ruleset",
+        "id": 3973005,
+        "name": "Default branch - reasonable (admin bypass)"
+      },
+      "enforcement": "active",
+      "result": "pass",
+      "rule_type": "deletion"
+    },
+    {
+      "rule_source": {
+        "type": "ruleset",
+        "id": 3973005,
+        "name": "Default branch - reasonable (admin bypass)"
+      },
+      "enforcement": "active",
+      "result": "pass",
+      "rule_type": "non_fast_forward"
+    },
+    {
+      "rule_source": {
+        "type": "ruleset",
+        "id": 5380008,
+        "name": "Pull requests + status checks"
+      },
+      "enforcement": "active",
+      "result": "pass",
+      "rule_type": "required_status_checks"
+    },
+    {
+      "rule_source": {
+        "type": "ruleset",
+        "id": 5380008,
+        "name": "Pull requests + status checks"
+      },
+      "enforcement": "active",
+      "result": "pass",
+      "rule_type": "pull_request"
+    },
+    {
+      "rule_source": {
+        "type": "ruleset",
+        "id": 5380008,
+        "name": "Pull requests + status checks"
+      },
+      "enforcement": "active",
+      "result": "pass",
+      "rule_type": "deletion"
+    },
+    {
+      "rule_source": {
+        "type": "ruleset",
+        "id": 5380008,
+        "name": "Pull requests + status checks"
+      },
+      "enforcement": "active",
+      "result": "pass",
+      "rule_type": "non_fast_forward"
+    },
+    {
+      "rule_source": {
+        "type": "ruleset",
+        "id": 5489647,
+        "name": "Semgrep"
+      },
+      "enforcement": "evaluate",
+      "result": "pass",
+      "rule_type": "workflows"
+    }
+  ]
+}
