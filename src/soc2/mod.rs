@@ -62,11 +62,10 @@ async fn update_rule_suites(
         }
 
         // Skip rule suites created by bots. Some bots in our org can bypass and commit directly to main.
-        if let Some(actor) = suite.actor_name {
-            if actor.contains("[bot]") {
+        if let Some(actor) = suite.actor_name
+            && actor.contains("[bot]") {
                 continue;
             }
-        }
 
         let Ok(full_result): octocrab::Result<RuleSuite> = octocrab
             .get(
@@ -104,8 +103,8 @@ async fn update_rule_suites(
             continue;
         };
 
-        if lookup.is_none() {
-            if let Err(e) = db
+        if lookup.is_none()
+            && let Err(e) = db
                 .create_rule_suite_event(NewGithubRuleSuiteEvent {
                     github_id: suite.id.to_string(),
                     repository_full_name: repository_full_name.to_string(),
@@ -124,7 +123,6 @@ async fn update_rule_suites(
                 );
                 continue;
             }
-        }
     }
 
     Ok(())
