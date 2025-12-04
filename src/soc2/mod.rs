@@ -63,9 +63,10 @@ async fn update_rule_suites(
 
         // Skip rule suites created by bots. Some bots in our org can bypass and commit directly to main.
         if let Some(actor) = suite.actor_name
-            && actor.contains("[bot]") {
-                continue;
-            }
+            && actor.contains("[bot]")
+        {
+            continue;
+        }
 
         let Ok(full_result): octocrab::Result<RuleSuite> = octocrab
             .get(
@@ -115,14 +116,14 @@ async fn update_rule_suites(
                     notified: false,
                 })
                 .await
-            {
-                tracing::warn!(
-                    "Failed to create rule suite event for suite ID {}: {}",
-                    suite.id,
-                    e
-                );
-                continue;
-            }
+        {
+            tracing::warn!(
+                "Failed to create rule suite event for suite ID {}: {}",
+                suite.id,
+                e
+            );
+            continue;
+        }
     }
 
     Ok(())

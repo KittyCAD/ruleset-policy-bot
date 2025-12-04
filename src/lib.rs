@@ -52,7 +52,6 @@ pub struct GitHubAppAuthContext {
 /// User information from the database
 pub struct User {
     pub email: String,
-    pub github_username: Option<String>,
 }
 
 /// Slack client abstraction
@@ -123,10 +122,7 @@ pub trait RulesetBot: Send + Sync {
     ) -> Result<Option<GithubRuleSuiteEvent>>;
 
     /// Create a new GitHub rule suite event
-    async fn create_rule_suite_event(
-        &self,
-        event: NewGithubRuleSuiteEvent,
-    ) -> Result<GithubRuleSuiteEvent>;
+    async fn create_rule_suite_event(&self, event: NewGithubRuleSuiteEvent) -> Result<()>;
 
     /// Find all unnotified rule suite events for a repository
     async fn find_unnotified_rule_suites(
