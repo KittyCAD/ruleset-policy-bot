@@ -16,4 +16,4 @@ jobs:
       - name: Build workspace
         run: cargo test --workspace
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.TEST_GH_TOKEN }}
