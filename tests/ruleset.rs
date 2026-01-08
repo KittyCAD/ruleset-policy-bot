@@ -18,6 +18,7 @@ impl RulesetBot for MockRulesetBot {
     }
 
     async fn create_rule_suite_event(&self, event: NewGithubRuleSuiteEvent) -> anyhow::Result<()> {
+        println!("Created rule suite event: {:?}", event);
         Ok(())
     }
 
@@ -62,8 +63,8 @@ async fn test() {
     process_rule_suites(
         &MockRulesetBot,
         &BotConfig {
-            github_org: "".to_string(),
-            github_web_base_url: "".to_string(),
+            github_org: "KittyCAD".to_string(),
+            github_web_base_url: "https://github.com/".to_string(),
             slack_soc2_channel: "".to_string(),
             review_requirement_ruleset_id: None,
             block_force_push_ruleset_id: None,
@@ -72,7 +73,7 @@ async fn test() {
         },
         &MockSlackClient,
         "KittyCAD/ruleset-policy-bot",
-        "KittyCAD/ruleset-policy-bot",
+        "ruleset-policy-bot",
     )
     .await
     .unwrap();

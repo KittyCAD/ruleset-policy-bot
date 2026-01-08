@@ -1,7 +1,7 @@
 pub mod asset_level;
 pub mod rule_suit;
 
-use anyhow::{Result, anyhow};
+use anyhow::{Result, anyhow, Context};
 use octocrab::{
     Octocrab, Page,
     commits::PullRequestTarget,
@@ -80,7 +80,7 @@ async fn update_rule_suites(
 
     // https://docs.github.com/en/rest/repos/rule-suites?apiVersion=2022-11-28#list-repository-rule-suites
     let url = format!("/repos/{repository_full_name}/rulesets/rule-suites");
-    let rule_suites: Vec<RuleSuite> = octocrab.get(url, None::<&()>).await?;
+    let rule_suites: Vec<RuleSuite> = octocrab.get(url, None::<&()>).await.context("unable to fetch rule suites")?;
     // Process each rule suite.
     for suite in rule_suites {
         if suite.result != RuleOutcome::Bypass {
@@ -101,8 +101,7 @@ async fn update_rule_suites(
                     repository_full_name, suite.id
                 ),
                 None::<&()>,
-            )
-            .await
+            ).await
         else {
             tracing::warn!(
                 "Failed to fetch full rule suite data for suite ID {}",
