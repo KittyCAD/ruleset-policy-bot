@@ -7,42 +7,68 @@ use octocrab::{
     commits::PullRequestTarget,
     models::{AppId, InstallationId, pulls::PullRequest, repos::RepoCommit},
 };
-use slack_morphism::{SlackChannelId, api::SlackApiChatPostMessageRequest};
+use slack_morphism::SlackChannelId;
 
 use crate::{
-    NewGithubRuleSuiteEvent, RulesetBot, SlackClient,
+    BotConfig, GitHubAuth, NewGithubRuleSuiteEvent, RulesetBot, SlackClient,
     soc2::{
         asset_level::{AssetLevel, CustomPropertyExt},
         rule_suit::{RuleOutcome, RuleSuite},
     },
 };
 
-#[tracing::instrument(skip(db))]
+#[tracing::instrument(skip(bot, config, slack))]
 pub async fn process_rule_suites(
-    db: &dyn RulesetBot,
+    bot: &dyn RulesetBot,
+    config: &BotConfig,
+    slack: &dyn SlackClient,
     repository_full_name: &str,
     repository_name: &str,
 ) -> anyhow::Result<()> {
-    let auth_context = db.github_app_auth_context().await?;
-    let credentials = auth_context.credentials;
-    let installation_id = auth_context.installation_id;
+    let octocrab = match &config.github_auth {
+        GitHubAuth::Installation(auth_context) => {
+            let credentials = &auth_context.credentials;
+            let installation_id = auth_context.installation_id;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(credentials.private_key.as_bytes())?;
+            let key = jsonwebtoken::EncodingKey::from_rsa_pem(credentials.private_key.as_bytes())?;
 
-    let id: u64 = credentials.app_id.parse()?;
-    let octocrab = octocrab::Octocrab::builder()
-        .app(AppId::from(id), key)
-        .build()?
-        .installation(InstallationId::from(installation_id as u64))?;
+            let id: u64 = credentials.app_id.parse()?;
+            let octocrab = octocrab::Octocrab::builder()
+                .app(AppId::from(id), key)
+                .build()?
+                .installation(InstallationId::from(installation_id as u64))?;
 
-    update_rule_suites(db, &octocrab, repository_full_name, repository_name).await?;
-    evaluate_rule_suites(db, &octocrab, repository_full_name, repository_name).await?;
+            octocrab
+        }
+        GitHubAuth::Token(token) => octocrab::Octocrab::builder()
+            .personal_token(token.to_string())
+            .build()?,
+    };
+
+    update_rule_suites(
+        bot,
+        config,
+        &octocrab,
+        repository_full_name,
+        repository_name,
+    )
+    .await?;
+    evaluate_rule_suites(
+        bot,
+        config,
+        slack,
+        &octocrab,
+        repository_full_name,
+        repository_name,
+    )
+    .await?;
     Ok(())
 }
 
-#[tracing::instrument(skip(db, octocrab))]
+#[tracing::instrument(skip(bot, config, octocrab))]
 async fn update_rule_suites(
-    db: &dyn RulesetBot,
+    bot: &dyn RulesetBot,
+    config: &BotConfig,
     octocrab: &Octocrab,
     repository_full_name: &str,
     repository_name: &str,
@@ -50,7 +76,7 @@ async fn update_rule_suites(
     // Update rule suites in the DB
     // We are hoping here that the rule suites are already available via the API. If not they will get fetched with the next repo event.
 
-    let github_org = db.config().github_org();
+    let github_org = &config.github_org;
 
     // https://docs.github.com/en/rest/repos/rule-suites?apiVersion=2022-11-28#list-repository-rule-suites
     let url = format!("/repos/{repository_full_name}/rulesets/rule-suites");
@@ -100,12 +126,15 @@ async fn update_rule_suites(
             .ok();
 
         // Insert rule suite if id does not yet exist.
-        let Ok(lookup) = db.find_rule_suite_by_github_id(&suite.id.to_string()).await else {
+        let Ok(lookup) = bot
+            .find_rule_suite_by_github_id(&suite.id.to_string())
+            .await
+        else {
             continue;
         };
 
         if lookup.is_none()
-            && let Err(e) = db
+            && let Err(e) = bot
                 .create_rule_suite_event(NewGithubRuleSuiteEvent {
                     github_id: suite.id.to_string(),
                     repository_full_name: repository_full_name.to_string(),
@@ -129,14 +158,16 @@ async fn update_rule_suites(
     Ok(())
 }
 
-#[tracing::instrument(skip(db, octocrab))]
+#[tracing::instrument(skip(bot, config, slack, octocrab))]
 async fn evaluate_rule_suites(
-    db: &dyn RulesetBot,
+    bot: &dyn RulesetBot,
+    config: &BotConfig,
+    slack: &dyn SlackClient,
     octocrab: &Octocrab,
     repository_full_name: &str,
     repository_name: &str,
 ) -> anyhow::Result<()> {
-    let github_org = db.config().github_org();
+    let github_org = &config.github_org;
     let props = octocrab
         .list_custom_properties(github_org, repository_name)
         .await?;
@@ -152,13 +183,13 @@ async fn evaluate_rule_suites(
     }
 
     // Get all rule suites for the repository that have not yet been notified.
-    let rule_suites = db.find_unnotified_rule_suites(repository_full_name).await?;
+    let rule_suites = bot
+        .find_unnotified_rule_suites(repository_full_name)
+        .await?;
 
     if rule_suites.is_empty() {
         return Ok(());
     }
-
-    let slack = db.get_slack_client().await?;
 
     for suite in rule_suites {
         let suite_data: RuleSuite = serde_json::from_str(&suite.event_data)?;
@@ -177,11 +208,19 @@ async fn evaluate_rule_suites(
             });
 
         //suite_data.rule_evaluations.
-        send_violation_slack_message(&*slack, &suite_data, resulting_commit, pr, asset_level, db)
-            .await?;
+        send_violation_slack_message(
+            slack,
+            &suite_data,
+            resulting_commit,
+            pr,
+            asset_level,
+            bot,
+            config,
+        )
+        .await?;
 
         // Update the evaluation result in the DB.
-        db.mark_rule_suite_notified(suite.id).await?;
+        bot.mark_rule_suite_notified(suite.id).await?;
     }
 
     Ok(())
@@ -193,30 +232,31 @@ pub async fn send_violation_slack_message(
     resulting_commit: Option<RepoCommit>,
     pr: Option<PullRequest>,
     asset_level: AssetLevel,
-    db: &dyn RulesetBot,
+    bot: &dyn RulesetBot,
+    config: &BotConfig,
 ) -> Result<()> {
-    let max_ammann = slack.get_user_by_email("max.ammann@zoo.dev").await?.user;
+    let max_ammann = slack.get_user_by_email("max.ammann@zoo.dev").await?;
 
     let slack_actor = suite_data
-        .get_slack_actor(slack, max_ammann.clone(), db)
+        .get_slack_actor(slack, max_ammann.clone(), bot)
         .await?;
 
-    let content = suite_data.build_soc2_notification(&slack_actor, asset_level, db.config());
+    let content = suite_data.build_soc2_notification(&slack_actor, asset_level, config);
 
     // Send as DM or to channel based on level
-    let call_out = suite_data.call_out_violation(asset_level, resulting_commit, pr, db.config());
+    let call_out = suite_data.call_out_violation(asset_level, resulting_commit, pr, config);
 
-    let soc2_channel = db.config().slack_soc2_channel();
+    let soc2_channel = &config.slack_soc2_channel;
 
     if let Err(e) = slack
-        .post_message(SlackApiChatPostMessageRequest::new(
+        .post_message(
             SlackChannelId::new(if call_out {
                 soc2_channel.to_string()
             } else {
                 slack_actor.id.0.clone()
             }),
             content.clone(),
-        ))
+        )
         .await
     {
         return Err(anyhow!("posting a slack message failed: {e}"));
@@ -224,10 +264,7 @@ pub async fn send_violation_slack_message(
 
     // Also send to Max Ammann
     if let Err(e) = slack
-        .post_message(SlackApiChatPostMessageRequest::new(
-            SlackChannelId::new(max_ammann.id.0),
-            content,
-        ))
+        .post_message(SlackChannelId::new(max_ammann.id.0), content)
         .await
     {
         return Err(anyhow!("posting a slack message failed: {e}"));

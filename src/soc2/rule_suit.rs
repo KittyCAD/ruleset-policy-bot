@@ -1,11 +1,11 @@
 use std::fmt::{Display, Formatter};
 
+use crate::BotConfig;
+use crate::soc2::asset_level::AssetLevel;
 use chrono::{DateTime, Utc};
 use octocrab::models::{pulls::PullRequest, repos::RepoCommit};
 use serde::{Deserialize, Serialize};
 use slack_morphism::prelude::*;
-
-use crate::soc2::asset_level::AssetLevel;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RuleSuite {
@@ -38,7 +38,7 @@ impl RuleSuite {
         asset_level: AssetLevel,
         resulting_commit: Option<RepoCommit>,
         pr: Option<PullRequest>,
-        config: &dyn crate::Config,
+        config: &BotConfig,
     ) -> bool {
         match asset_level {
             AssetLevel::Production => {
@@ -110,11 +110,11 @@ impl RuleSuite {
             })
             .unwrap_or(false)
     }
-    pub fn get_commit_url(&self, config: &dyn crate::Config) -> String {
+    pub fn get_commit_url(&self, config: &BotConfig) -> String {
         format!(
             "{base}/{org}/{repo}/commit/{sha}",
-            base = config.github_web_base_url(),
-            org = config.github_org(),
+            base = config.github_web_base_url,
+            org = config.github_org,
             repo = self.repository_name,
             sha = self.after_sha,
         )
@@ -127,10 +127,10 @@ impl RuleSuite {
         db: &dyn crate::RulesetBot,
     ) -> anyhow::Result<SlackUser> {
         let slack_user = if let Some(actor) = &self.actor_name {
-            let user = db.get_user_by_github_username(actor).await?;
+            let email = db.get_email_by_github_username(actor).await?;
 
-            if let Some(user) = user {
-                Some(slack.get_user_by_email(&user.email).await?)
+            if let Some(email) = email {
+                Some(slack.get_user_by_email(&email).await?)
             } else {
                 None
             }
@@ -138,7 +138,7 @@ impl RuleSuite {
             None
         };
 
-        let slack_user = slack_user.map(|user| user.user).unwrap_or(max_ammann);
+        let slack_user = slack_user.map(|user| user).unwrap_or(max_ammann);
 
         Ok(slack_user)
     }
@@ -147,7 +147,7 @@ impl RuleSuite {
         &self,
         slack_actor: &SlackUser,
         asset_level: AssetLevel,
-        config: &dyn crate::Config,
+        config: &BotConfig,
     ) -> SlackMessageContent {
         let is_critical = asset_level == AssetLevel::Production
             && if let Some(rule_evaluations) = &self.rule_evaluations {
@@ -391,7 +391,7 @@ pub struct RuleEvaluation {
 }
 
 impl RuleEvaluation {
-    pub fn attachment_color(&self, config: &dyn crate::Config) -> &'static str {
+    pub fn attachment_color(&self, config: &BotConfig) -> &'static str {
         if self.is_critical_violation(config) {
             // red
             "#E01E5A"
@@ -405,30 +405,30 @@ impl RuleEvaluation {
         self.enforcement == Enforcement::Active && self.result == RuleEvalResult::Fail
     }
 
-    pub fn is_critical_violation(&self, config: &dyn crate::Config) -> bool {
+    pub fn is_critical_violation(&self, config: &BotConfig) -> bool {
         self.is_review_requirement_bypass(config) || self.is_block_force_push_bypass(config)
     }
 
-    pub fn is_review_requirement_bypass(&self, config: &dyn crate::Config) -> bool {
+    pub fn is_review_requirement_bypass(&self, config: &BotConfig) -> bool {
         self.is_failed()
             && config
-                .review_requirement_ruleset_id()
+                .review_requirement_ruleset_id
                 .map(|id| self.rule_source.id == Some(id))
                 .unwrap_or(false)
     }
 
-    pub fn is_block_force_push_bypass(&self, config: &dyn crate::Config) -> bool {
+    pub fn is_block_force_push_bypass(&self, config: &BotConfig) -> bool {
         self.is_failed()
             && config
-                .block_force_push_ruleset_id()
+                .block_force_push_ruleset_id
                 .map(|id| self.rule_source.id == Some(id))
                 .unwrap_or(false)
     }
 
-    pub fn is_codeowners_bypass(&self, config: &dyn crate::Config) -> bool {
+    pub fn is_codeowners_bypass(&self, config: BotConfig) -> bool {
         self.is_failed()
             && config
-                .codeowners_ruleset_id()
+                .codeowners_ruleset_id
                 .map(|id| self.rule_source.id == Some(id))
                 .unwrap_or(false)
     }
