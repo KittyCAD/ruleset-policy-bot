@@ -16,8 +16,10 @@ jobs:
       - uses: actions/checkout@v6
       - name: Reset ci-tests branch
         run: |
-          git remote set-url origin https://${{ github.actor }}:${{ secrets.TEST_GH_TOKEN }}@github.com/${{ github.repository }}.git
           ./scripts/reset-ci-tests.sh
+        env:
+          GH_TOKEN: ${{ secrets.TEST_GH_TOKEN }}
+          GH_ACTOR: ${{ github.actor }}
       - name: Test workspace
         run: cargo test --workspace
         env:

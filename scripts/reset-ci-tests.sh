@@ -36,6 +36,7 @@ git checkout "$BRANCH"
 # Create an empty commit
 git commit --allow-empty -m "ci: empty commit violate ruleset"
 
+git remote set-url origin "https://$GH_ACTOR:$GH_TOKEN@github.com/KittyCAD/ruleset-policy-bot.git"
 # Force push to remote
 git push -f "$REMOTE" "$BRANCH"
 
