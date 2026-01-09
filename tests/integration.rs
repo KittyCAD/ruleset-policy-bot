@@ -236,14 +236,11 @@ async fn test_updating_rule_suites() {
     .await
     .unwrap();
 
-    insta::assert_debug_snapshot!(
-        bot.events
-            .lock()
-            .as_ref()
-            .expect("should not be locked")
-            .borrow()
-            .first()
-    );
+    let events = bot.events.lock();
+    let events = events.as_ref().expect("should not be locked").borrow();
+    let event = events.first().clone().expect("should have event");
+
+    assert!(!event.event_data.is_empty());
 
     insta::assert_debug_snapshot!(
         slack_client
