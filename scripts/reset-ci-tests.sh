@@ -13,6 +13,8 @@ echo "Working in $WORKDIR"
 
 # Determine repo URL based on environment (GitHub Actions uses HTTPS)
 if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+  git config --global user.email "you@example.com"
+  git config --global user.name "Your Name"
   REPO_URL="https://github.com/KittyCAD/ruleset-policy-bot.git"
 else
   REPO_URL="git@github.com:KittyCAD/ruleset-policy-bot.git"
