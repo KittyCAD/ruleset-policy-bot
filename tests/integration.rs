@@ -342,7 +342,8 @@ async fn test_evaluate_rule_suites() {
         .lock()
         .as_ref()
         .expect("should not be locked")
-        .borrow().clone();
+        .borrow()
+        .clone();
     assert_eq!(messages.len(), 2); // One to actor one to max
     insta::assert_debug_snapshot!(messages);
 
@@ -380,7 +381,8 @@ async fn test_evaluate_rule_suites() {
         .lock()
         .as_ref()
         .expect("should not be locked")
-        .borrow().clone();
+        .borrow()
+        .clone();
     assert_eq!(messages.len(), 3); // one to max, one to actor, one to soc2 channel
     insta::assert_debug_snapshot!(messages);
 }

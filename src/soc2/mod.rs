@@ -25,7 +25,7 @@ pub async fn process_rule_suites(
     repository_full_name: &str,
     repository_name: &str,
 ) -> anyhow::Result<()> {
-    let octocrab = create_octocrab(&config)?;
+    let octocrab = create_octocrab(config)?;
 
     update_rule_suites(
         bot,
@@ -56,12 +56,11 @@ pub fn create_octocrab(config: &BotConfig) -> Result<Octocrab> {
             let key = jsonwebtoken::EncodingKey::from_rsa_pem(credentials.private_key.as_bytes())?;
 
             let id: u64 = credentials.app_id.parse()?;
-            let octocrab = octocrab::Octocrab::builder()
+
+            octocrab::Octocrab::builder()
                 .app(AppId::from(id), key)
                 .build()?
-                .installation(InstallationId::from(installation_id as u64))?;
-
-            octocrab
+                .installation(InstallationId::from(installation_id as u64))?
         }
         GitHubAuth::Token(token) => octocrab::Octocrab::builder()
             .personal_token(token.to_string())
@@ -256,16 +255,15 @@ pub async fn send_violation_slack_message(
 
     let soc2_channel = &config.slack_soc2_channel;
 
-    if call_out {
-        if let Err(e) = slack
+    if call_out
+        && let Err(e) = slack
             .post_message(
                 SlackChannelId::new(soc2_channel.to_string()),
                 content.clone(),
             )
             .await
-        {
-            return Err(anyhow!("posting a slack message failed: {e}"));
-        }
+    {
+        return Err(anyhow!("posting a slack message failed: {e}"));
     }
 
     // Send to actor

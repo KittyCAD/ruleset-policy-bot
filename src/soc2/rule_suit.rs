@@ -62,7 +62,6 @@ impl RuleSuite {
                         EvaluatedRuleSource::Unknown { .. } => true,
                     });
 
-
                 if is_branch_protection {
                     return true;
                 }
@@ -135,7 +134,7 @@ impl RuleSuite {
             None
         };
 
-        let slack_user = slack_user.map(|user| user).unwrap_or(max_ammann);
+        let slack_user = slack_user.unwrap_or(max_ammann);
 
         Ok(slack_user)
     }
@@ -250,7 +249,7 @@ impl RuleSuite {
                 {
                     fields.push(SlackMessageAttachmentFieldObject {
                         title: Some("Pull Request".to_string()),
-                        value: Some(format!("<{}|#{}>", html_url.to_string(), number)),
+                        value: Some(format!("<{}|#{}>", html_url, number)),
                         short: Some(false),
                     });
                 }
