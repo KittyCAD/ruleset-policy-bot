@@ -242,15 +242,10 @@ async fn test_updating_rule_suites() {
 
     assert!(!event.event_data.is_empty());
 
-    insta::assert_debug_snapshot!(
-        slack_client
-            .messages
-            .lock()
-            .as_ref()
-            .expect("should not be locked")
-            .borrow()
-            .first()
-    );
+    let message = slack_client.messages.lock();
+    let message = message.as_ref().expect("should not be locked").borrow();
+    let message = message.first().expect("should have message");
+    insta::assert_debug_snapshot!(message.1.blocks);
 }
 
 #[tokio::test]
