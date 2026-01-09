@@ -9,11 +9,15 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v6
       - name: Reset ci-tests branch
-        run: ./scripts/reset-ci-tests.sh
+        run: |
+          git remote set-url origin https://${{ github.actor }}:${{ secrets.TEST_GH_TOKEN }}@github.com/${{ github.repository }}.git
+          ./scripts/reset-ci-tests.sh
       - name: Test workspace
         run: cargo test --workspace
         env:
