@@ -12,8 +12,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
-
-      - name: Build workspace
+      - name: Reset ci-tests branch
+        run: ./scripts/reset-ci-tests.sh
+      - name: Test workspace
         run: cargo test --workspace
         env:
           GH_TOKEN: ${{ secrets.TEST_GH_TOKEN }}
