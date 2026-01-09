@@ -40,54 +40,51 @@ impl RuleSuite {
         pr: Option<PullRequest>,
         config: &BotConfig,
     ) -> bool {
-        match asset_level {
-            AssetLevel::Production => {
-                let is_review_force_push_violation =
-                    self.any(|eval| eval.is_block_force_push_bypass(config));
+        if config.callout_asset_level.contains(&asset_level) {
+            let is_review_force_push_violation =
+                self.any(|eval| eval.is_block_force_push_bypass(config));
 
-                if is_review_force_push_violation {
+            if is_review_force_push_violation {
+                return true;
+            } else {
+                // Ignore CO violations for now. Not SOC2 relevant. Send as DM.
+                // let is_codeowner_violation = self.any(|eval| eval.is_codeowners_bypass(config));
+                // Ignore CIO violations for now. Send as DM.
+                // let is_ci_violation = false;
+
+                let is_review_violation =
+                    self.any(|eval| eval.is_review_requirement_bypass(config));
+                let is_branch_protection =
+                    self.any(|eval| match eval.rule_source.evaluated_rule_source() {
+                        EvaluatedRuleSource::Ruleset { .. } => false,
+                        EvaluatedRuleSource::ProtectedBranch => true,
+                        // coulde be a branch protection one
+                        EvaluatedRuleSource::Unknown { .. } => true,
+                    });
+
+
+                if is_branch_protection {
                     return true;
-                } else {
-                    // Ignore CO violations for now. Not SOC2 relevant. Send as DM.
-                    // let is_codeowner_violation = self.any(|eval| eval.is_codeowners_bypass(config));
-                    // Ignore CIO violations for now. Send as DM.
-                    // let is_ci_violation = false;
+                }
 
-                    let is_review_violation =
-                        self.any(|eval| eval.is_review_requirement_bypass(config));
-                    let is_branch_protection =
-                        self.any(|eval| match eval.rule_source.evaluated_rule_source() {
-                            EvaluatedRuleSource::Ruleset { .. } => false,
-                            EvaluatedRuleSource::ProtectedBranch => true,
-                            // coulde be a branch protection one
-                            EvaluatedRuleSource::Unknown { .. } => true,
-                        });
+                let is_dependabot_pr = resulting_commit
+                    .and_then(|commit| commit.author)
+                    .map(|author| author.id.0 == 49699333 && author.login == "dependabot[bot]")
+                    .unwrap_or(false);
+                let is_policy_exception_label = pr
+                    .map(|pr| {
+                        pr.labels
+                            .iter()
+                            .flatten()
+                            .any(|label| label.name.contains("policy-exception"))
+                    })
+                    .unwrap_or(false);
 
-                    if is_branch_protection {
-                        return true;
-                    }
-
-                    let is_dependabot_pr = resulting_commit
-                        .and_then(|commit| commit.author)
-                        .map(|author| author.id.0 == 49699333 && author.login == "dependabot[bot]")
-                        .unwrap_or(false);
-                    let is_policy_exception_label = pr
-                        .map(|pr| {
-                            pr.labels
-                                .iter()
-                                .flatten()
-                                .any(|label| label.name.contains("policy-exception"))
-                        })
-                        .unwrap_or(false);
-
-                    if is_review_violation && !is_dependabot_pr && !is_policy_exception_label {
-                        return true;
-                    }
+                if is_review_violation && !is_dependabot_pr && !is_policy_exception_label {
+                    return true;
                 }
             }
-            AssetLevel::NonEssentialProduction => {}
-            _ => {}
-        };
+        }
 
         false
     }
@@ -150,7 +147,7 @@ impl RuleSuite {
         asset_level: AssetLevel,
         config: &BotConfig,
     ) -> SlackMessageContent {
-        let is_critical = asset_level == AssetLevel::Production
+        let is_critical = config.critical_asset_levels.contains(&asset_level)
             && if let Some(rule_evaluations) = &self.rule_evaluations {
                 rule_evaluations
                     .iter()

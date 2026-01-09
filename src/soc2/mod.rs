@@ -25,25 +25,7 @@ pub async fn process_rule_suites(
     repository_full_name: &str,
     repository_name: &str,
 ) -> anyhow::Result<()> {
-    let octocrab = match &config.github_auth {
-        GitHubAuth::Installation(auth_context) => {
-            let credentials = &auth_context.credentials;
-            let installation_id = auth_context.installation_id;
-
-            let key = jsonwebtoken::EncodingKey::from_rsa_pem(credentials.private_key.as_bytes())?;
-
-            let id: u64 = credentials.app_id.parse()?;
-            let octocrab = octocrab::Octocrab::builder()
-                .app(AppId::from(id), key)
-                .build()?
-                .installation(InstallationId::from(installation_id as u64))?;
-
-            octocrab
-        }
-        GitHubAuth::Token(token) => octocrab::Octocrab::builder()
-            .personal_token(token.to_string())
-            .build()?,
-    };
+    let octocrab = create_octocrab(&config)?;
 
     update_rule_suites(
         bot,
@@ -63,6 +45,29 @@ pub async fn process_rule_suites(
     )
     .await?;
     Ok(())
+}
+
+pub fn create_octocrab(config: &BotConfig) -> Result<Octocrab> {
+    let octocrab = match &config.github_auth {
+        GitHubAuth::Installation(auth_context) => {
+            let credentials = &auth_context.credentials;
+            let installation_id = auth_context.installation_id;
+
+            let key = jsonwebtoken::EncodingKey::from_rsa_pem(credentials.private_key.as_bytes())?;
+
+            let id: u64 = credentials.app_id.parse()?;
+            let octocrab = octocrab::Octocrab::builder()
+                .app(AppId::from(id), key)
+                .build()?
+                .installation(InstallationId::from(installation_id as u64))?;
+
+            octocrab
+        }
+        GitHubAuth::Token(token) => octocrab::Octocrab::builder()
+            .personal_token(token.to_string())
+            .build()?,
+    };
+    Ok(octocrab)
 }
 
 #[tracing::instrument(skip(bot, config, octocrab))]
@@ -162,7 +167,7 @@ async fn update_rule_suites(
 }
 
 #[tracing::instrument(skip(bot, config, slack, octocrab))]
-async fn evaluate_rule_suites(
+pub async fn evaluate_rule_suites(
     bot: &dyn RulesetBot,
     config: &BotConfig,
     slack: &dyn SlackClient,
@@ -251,13 +256,22 @@ pub async fn send_violation_slack_message(
 
     let soc2_channel = &config.slack_soc2_channel;
 
+    if call_out {
+        if let Err(e) = slack
+            .post_message(
+                SlackChannelId::new(soc2_channel.to_string()),
+                content.clone(),
+            )
+            .await
+        {
+            return Err(anyhow!("posting a slack message failed: {e}"));
+        }
+    }
+
+    // Send to actor
     if let Err(e) = slack
         .post_message(
-            SlackChannelId::new(if call_out {
-                soc2_channel.to_string()
-            } else {
-                slack_actor.id.0.clone()
-            }),
+            SlackChannelId::new(slack_actor.id.0.clone()),
             content.clone(),
         )
         .await

@@ -1,0 +1,134 @@
+---
+source: tests/integration.rs
+expression: "slack_client.messages.lock().as_ref().expect(\"should not be locked\").borrow().first()"
+---
+Some(
+    (
+        SlackChannelId(
+            "max.ammann@zoo.dev",
+        ),
+        SlackMessageContent {
+            text: Some(
+                "<@max.ammann@zoo.dev>, please make sure no security policy has been violated. No need to comment.\n\nmaxammann violated rule (`pull_request`) from ruleset `Testing` with <https://github.com/ruleset-policy-bot/commit/d6602d2416760fb1bee076fbd895b97e41a0f0f7|`d6602d2`> in `ruleset-policy-bot`.\n\nChanges must be made through a pull request.\n",
+            ),
+            blocks: Some(
+                [
+                    Header(
+                        SlackHeaderBlock {
+                            block_id: None,
+                            text: SlackBlockPlainTextOnly {
+                                value: SlackBlockPlainText {
+                                    text: "Potential GitHub Policy Violation",
+                                    emoji: None,
+                                },
+                            },
+                        },
+                    ),
+                    Section(
+                        SlackSectionBlock {
+                            block_id: None,
+                            text: Some(
+                                MarkDown(
+                                    SlackBlockMarkDownText {
+                                        text: "<@max.ammann@zoo.dev>, please make sure no security policy has been violated. No need to comment.",
+                                        verbatim: None,
+                                    },
+                                ),
+                            ),
+                            fields: None,
+                            accessory: None,
+                        },
+                    ),
+                    Section(
+                        SlackSectionBlock {
+                            block_id: None,
+                            text: Some(
+                                MarkDown(
+                                    SlackBlockMarkDownText {
+                                        text: "*Actor*\nmaxammann",
+                                        verbatim: None,
+                                    },
+                                ),
+                            ),
+                            fields: None,
+                            accessory: None,
+                        },
+                    ),
+                ],
+            ),
+            attachments: Some(
+                [
+                    SlackMessageAttachment {
+                        id: None,
+                        color: Some(
+                            "#ECB22E",
+                        ),
+                        fallback: Some(
+                            "no fallback",
+                        ),
+                        title: None,
+                        fields: Some(
+                            [
+                                SlackMessageAttachmentFieldObject {
+                                    title: Some(
+                                        "Commit",
+                                    ),
+                                    value: Some(
+                                        "<https://github.com//KittyCAD/ruleset-policy-bot/commit/d6602d2416760fb1bee076fbd895b97e41a0f0f7|`d6602d2`> in `ruleset-policy-bot`.",
+                                    ),
+                                    short: Some(
+                                        true,
+                                    ),
+                                },
+                                SlackMessageAttachmentFieldObject {
+                                    title: Some(
+                                        "Sub-type",
+                                    ),
+                                    value: Some(
+                                        "*pull_request*",
+                                    ),
+                                    short: Some(
+                                        true,
+                                    ),
+                                },
+                                SlackMessageAttachmentFieldObject {
+                                    title: Some(
+                                        "Details",
+                                    ),
+                                    value: Some(
+                                        "Changes must be made through a pull request.",
+                                    ),
+                                    short: Some(
+                                        false,
+                                    ),
+                                },
+                                SlackMessageAttachmentFieldObject {
+                                    title: Some(
+                                        "Ruleset",
+                                    ),
+                                    value: Some(
+                                        "<https://github.com/organizations/KittyCAD/settings/rules/11660672|Testing>",
+                                    ),
+                                    short: Some(
+                                        false,
+                                    ),
+                                },
+                            ],
+                        ),
+                        mrkdwn_in: Some(
+                            [
+                                "fields",
+                            ],
+                        ),
+                        text: None,
+                        blocks: None,
+                    },
+                ],
+            ),
+            upload: None,
+            files: None,
+            reactions: None,
+            metadata: None,
+        },
+    ),
+)

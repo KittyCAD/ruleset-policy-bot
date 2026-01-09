@@ -1579,6 +1579,7 @@ dependencies = [
  "slack-morphism",
  "tokio",
  "tracing",
+ "url",
 ]
 
 [[package]]

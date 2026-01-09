@@ -20,6 +20,10 @@ pub struct BotConfig {
     pub codeowners_ruleset_id: Option<i64>,
     /// The in-scope asset level repos
     pub in_scope_asset_level: RangeInclusive<AssetLevel>,
+    /// The range of asset levels that can trigger callouts (there are still exceptions)
+    pub callout_asset_level: RangeInclusive<AssetLevel>,
+    /// The asset levels that are considered critical
+    pub critical_asset_levels: RangeInclusive<AssetLevel>,
     pub github_auth: GitHubAuth,
 }
 
