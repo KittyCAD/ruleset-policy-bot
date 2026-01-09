@@ -146,6 +146,7 @@ impl RuleSuite {
     pub fn build_soc2_notification(
         &self,
         slack_actor: &SlackUser,
+        pr: &Option<PullRequest>,
         asset_level: AssetLevel,
         config: &BotConfig,
     ) -> SlackMessageContent {
@@ -163,7 +164,7 @@ impl RuleSuite {
             SlackHeaderBlock {
                 block_id: None,
                 text: SlackBlockPlainText::from(format!(
-                    "{} GitHub Policy Violation",
+                    "{}GitHub Policy Violation",
                     if is_critical {
                         "Critical "
                     } else {
@@ -230,7 +231,7 @@ impl RuleSuite {
                     SlackMessageAttachmentFieldObject {
                         title: Some("Commit".to_string()),
                         value: Some(format!(
-                            " with <{}|`{}`> in `{}`.",
+                            "<{}|`{}`> in `{}`.",
                             commit_url,
                             &self.after_sha.get(..7).unwrap_or("commit"),
                             self.repository_name
@@ -243,6 +244,19 @@ impl RuleSuite {
                         short: Some(true),
                     },
                 ];
+
+                if let Some(PullRequest {
+                    number,
+                    html_url: Some(html_url),
+                    ..
+                }) = &pr
+                {
+                    fields.push(SlackMessageAttachmentFieldObject {
+                        title: Some("Pull Request".to_string()),
+                        value: Some(format!("<{}|#{}>", html_url.to_string(), number)),
+                        short: Some(false),
+                    });
+                }
 
                 if let Some(details) = &evaluation.details {
                     fields.push(SlackMessageAttachmentFieldObject {

@@ -1,12 +1,14 @@
 mod null_date_format;
 pub mod soc2;
 
+use crate::soc2::asset_level::AssetLevel;
 use anyhow::Result;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use slack_morphism::{SlackChannelId, SlackMessageContent, SlackUser};
 use std::fmt::Debug;
+use std::ops::RangeInclusive;
 
 #[derive(Debug, Clone)]
 pub struct BotConfig {
@@ -16,6 +18,8 @@ pub struct BotConfig {
     pub review_requirement_ruleset_id: Option<i64>,
     pub block_force_push_ruleset_id: Option<i64>,
     pub codeowners_ruleset_id: Option<i64>,
+    /// The in-scope asset level repos
+    pub in_scope_asset_level: RangeInclusive<AssetLevel>,
     pub github_auth: GitHubAuth,
 }
 

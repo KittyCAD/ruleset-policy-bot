@@ -20,4 +20,4 @@ jsonwebtoken = "10"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
-
+insta = { version = "1", features = ["json"] }

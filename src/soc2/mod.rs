@@ -1,7 +1,7 @@
 pub mod asset_level;
 pub mod rule_suit;
 
-use anyhow::{Result, anyhow, Context};
+use anyhow::{Context, Result, anyhow};
 use octocrab::{
     Octocrab, Page,
     commits::PullRequestTarget,
@@ -80,7 +80,10 @@ async fn update_rule_suites(
 
     // https://docs.github.com/en/rest/repos/rule-suites?apiVersion=2022-11-28#list-repository-rule-suites
     let url = format!("/repos/{repository_full_name}/rulesets/rule-suites");
-    let rule_suites: Vec<RuleSuite> = octocrab.get(url, None::<&()>).await.context("unable to fetch rule suites")?;
+    let rule_suites: Vec<RuleSuite> = octocrab
+        .get(url, None::<&()>)
+        .await
+        .context("unable to fetch rule suites")?;
     // Process each rule suite.
     for suite in rule_suites {
         if suite.result != RuleOutcome::Bypass {
@@ -101,7 +104,8 @@ async fn update_rule_suites(
                     repository_full_name, suite.id
                 ),
                 None::<&()>,
-            ).await
+            )
+            .await
         else {
             tracing::warn!(
                 "Failed to fetch full rule suite data for suite ID {}",
@@ -176,8 +180,8 @@ async fn evaluate_rule_suites(
         return Ok(());
     };
 
-    if asset_level != AssetLevel::Production && asset_level != AssetLevel::NonEssentialProduction {
-        // Ignore non-production repositories.
+    if !config.in_scope_asset_level.contains(&asset_level) {
+        // Ignore out of scope repos.
         return Ok(());
     }
 
@@ -240,7 +244,7 @@ pub async fn send_violation_slack_message(
         .get_slack_actor(slack, max_ammann.clone(), bot)
         .await?;
 
-    let content = suite_data.build_soc2_notification(&slack_actor, asset_level, config);
+    let content = suite_data.build_soc2_notification(&slack_actor, &pr, asset_level, config);
 
     // Send as DM or to channel based on level
     let call_out = suite_data.call_out_violation(asset_level, resulting_commit, pr, config);
