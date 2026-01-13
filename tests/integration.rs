@@ -179,7 +179,7 @@ impl RulesetBot for MockRulesetBot {
 }
 
 struct MockSlackClient {
-    messages: Mutex<RefCell<Vec<(SlackChannelId, SlackMessageContent)>>>,
+    messages: Mutex<RefCell<Vec<(String, SlackMessageContent)>>>,
 }
 
 #[async_trait]
@@ -191,7 +191,7 @@ impl SlackClient for MockSlackClient {
         ))
     }
 
-    async fn post_message(
+    async fn post_message_channel(
         &self,
         channel_id: SlackChannelId,
         content: SlackMessageContent,
@@ -202,7 +202,22 @@ impl SlackClient for MockSlackClient {
             .as_ref()
             .expect("should not be locked")
             .borrow_mut()
-            .push((channel_id, content));
+            .push((channel_id.0, content));
+        Ok(())
+    }
+
+    async fn post_message_user(
+        &self,
+        user_id: SlackUserId,
+        content: SlackMessageContent,
+    ) -> anyhow::Result<()> {
+        println!("Posted message to user {}", user_id);
+        self.messages
+            .lock()
+            .as_ref()
+            .expect("should not be locked")
+            .borrow_mut()
+            .push((user_id.0, content));
         Ok(())
     }
 }

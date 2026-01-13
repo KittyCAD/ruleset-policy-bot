@@ -6,7 +6,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use slack_morphism::{SlackChannelId, SlackMessageContent, SlackUser};
+use slack_morphism::{SlackChannelId, SlackMessageContent, SlackUser, SlackUserId};
 use std::fmt::Debug;
 use std::ops::RangeInclusive;
 
@@ -65,10 +65,17 @@ pub trait SlackClient: Send + Sync {
     /// Get a Slack user by their email address
     async fn get_user_by_email(&self, email: &str) -> Result<SlackUser>;
 
-    /// Post a message to a Slack channel or user
-    async fn post_message(
+    /// Post a message to a Slack channel
+    async fn post_message_channel(
         &self,
         channel_id: SlackChannelId,
+        content: SlackMessageContent,
+    ) -> Result<()>;
+
+    /// Post a message to a Slack user
+    async fn post_message_user(
+        &self,
+        user_id: SlackUserId,
         content: SlackMessageContent,
     ) -> Result<()>;
 }

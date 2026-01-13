@@ -251,7 +251,7 @@ pub async fn send_violation_slack_message(
 
     if call_out
         && let Err(e) = slack
-            .post_message(
+            .post_message_channel(
                 SlackChannelId::new(soc2_channel.to_string()),
                 content.clone(),
             )
@@ -262,20 +262,14 @@ pub async fn send_violation_slack_message(
 
     // Send to actor
     if let Err(e) = slack
-        .post_message(
-            SlackChannelId::new(slack_actor.id.0.clone()),
-            content.clone(),
-        )
+        .post_message_user(slack_actor.id, content.clone())
         .await
     {
         return Err(anyhow!("posting a slack message failed: {e}"));
     }
 
     // Also send to Max Ammann
-    if let Err(e) = slack
-        .post_message(SlackChannelId::new(max_ammann.id.0), content)
-        .await
-    {
+    if let Err(e) = slack.post_message_user(max_ammann.id, content).await {
         return Err(anyhow!("posting a slack message failed: {e}"));
     }
 

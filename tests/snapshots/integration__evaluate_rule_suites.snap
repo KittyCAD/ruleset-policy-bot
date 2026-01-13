@@ -1,12 +1,10 @@
 ---
 source: tests/integration.rs
-expression: "slack_client.messages.lock().as_ref().expect(\"should not be locked\").borrow()"
+expression: messages
 ---
 [
     (
-        SlackChannelId(
-            "max.ammann@zoo.dev",
-        ),
+        "max.ammann@zoo.dev",
         SlackMessageContent {
             text: Some(
                 "<@max.ammann@zoo.dev>, please make sure no security policy has been violated. No need to comment.\n\nmaxammann violated rule (`pull_request`) from ruleset `Testing` with <https://github.com/ruleset-policy-bot/commit/d6602d2416760fb1bee076fbd895b97e41a0f0f7|`d6602d2`> in `ruleset-policy-bot`.\n\nChanges must be made through a pull request.\n",
@@ -132,9 +130,7 @@ expression: "slack_client.messages.lock().as_ref().expect(\"should not be locked
         },
     ),
     (
-        SlackChannelId(
-            "max.ammann@zoo.dev",
-        ),
+        "max.ammann@zoo.dev",
         SlackMessageContent {
             text: Some(
                 "<@max.ammann@zoo.dev>, please make sure no security policy has been violated. No need to comment.\n\nmaxammann violated rule (`pull_request`) from ruleset `Testing` with <https://github.com/ruleset-policy-bot/commit/d6602d2416760fb1bee076fbd895b97e41a0f0f7|`d6602d2`> in `ruleset-policy-bot`.\n\nChanges must be made through a pull request.\n",

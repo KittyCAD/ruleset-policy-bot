@@ -4,9 +4,7 @@ expression: messages
 ---
 [
     (
-        SlackChannelId(
-            "#soc2",
-        ),
+        "#soc2",
         SlackMessageContent {
             text: Some(
                 "<@max.ammann@zoo.dev>, please leave a comment in the thread why the below rules were violated.\n\nmaxammann violated rule (`pull_request`) from ruleset `Testing` with <https://github.com/ruleset-policy-bot/commit/d6602d2416760fb1bee076fbd895b97e41a0f0f7|`d6602d2`> in `ruleset-policy-bot`.\n\nChanges must be made through a pull request.\n",
@@ -132,9 +130,7 @@ expression: messages
         },
     ),
     (
-        SlackChannelId(
-            "max.ammann@zoo.dev",
-        ),
+        "max.ammann@zoo.dev",
         SlackMessageContent {
             text: Some(
                 "<@max.ammann@zoo.dev>, please leave a comment in the thread why the below rules were violated.\n\nmaxammann violated rule (`pull_request`) from ruleset `Testing` with <https://github.com/ruleset-policy-bot/commit/d6602d2416760fb1bee076fbd895b97e41a0f0f7|`d6602d2`> in `ruleset-policy-bot`.\n\nChanges must be made through a pull request.\n",
@@ -260,9 +256,7 @@ expression: messages
         },
     ),
     (
-        SlackChannelId(
-            "max.ammann@zoo.dev",
-        ),
+        "max.ammann@zoo.dev",
         SlackMessageContent {
             text: Some(
                 "<@max.ammann@zoo.dev>, please leave a comment in the thread why the below rules were violated.\n\nmaxammann violated rule (`pull_request`) from ruleset `Testing` with <https://github.com/ruleset-policy-bot/commit/d6602d2416760fb1bee076fbd895b97e41a0f0f7|`d6602d2`> in `ruleset-policy-bot`.\n\nChanges must be made through a pull request.\n",
