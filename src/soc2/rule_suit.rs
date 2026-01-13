@@ -119,10 +119,9 @@ impl RuleSuite {
     pub async fn get_slack_actor(
         &self,
         slack: &dyn crate::SlackClient,
-        max_ammann: SlackUser,
         db: &dyn crate::RulesetBot,
-    ) -> anyhow::Result<SlackUser> {
-        let slack_user = if let Some(actor) = &self.actor_name {
+    ) -> anyhow::Result<Option<SlackUser>> {
+        Ok(if let Some(actor) = &self.actor_name {
             let email = db.get_email_by_github_username(actor).await?;
 
             if let Some(email) = email {
@@ -132,11 +131,7 @@ impl RuleSuite {
             }
         } else {
             None
-        };
-
-        let slack_user = slack_user.unwrap_or(max_ammann);
-
-        Ok(slack_user)
+        })
     }
 
     pub fn build_soc2_notification(

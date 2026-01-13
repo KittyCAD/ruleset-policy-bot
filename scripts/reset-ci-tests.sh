@@ -15,7 +15,7 @@ echo "Working in $WORKDIR"
 if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
   git config --global user.email "you@example.com"
   git config --global user.name "Your Name"
-  REPO_URL="https://github.com/KittyCAD/ruleset-policy-bot.git"
+  REPO_URL="https://$GH_ACTOR:$GH_TOKEN@github.com/KittyCAD/ruleset-policy-bot.git"
 else
   REPO_URL="git@github.com:KittyCAD/ruleset-policy-bot.git"
 fi
@@ -36,7 +36,6 @@ git checkout "$BRANCH"
 # Create an empty commit
 git commit --allow-empty -m "ci: empty commit violate ruleset"
 
-git remote set-url origin "https://$GH_ACTOR:$GH_TOKEN@github.com/KittyCAD/ruleset-policy-bot.git"
 # Force push to remote
 git push -f "$REMOTE" "$BRANCH"
 

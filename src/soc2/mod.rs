@@ -206,15 +206,8 @@ pub async fn evaluate_rule_suites(
         let pr = suite
             .prs
             .and_then(|json| serde_json::from_str::<Vec<PullRequest>>(&json).ok())
-            .and_then(|prs| {
-                if prs.len() == 1 {
-                    prs.into_iter().next()
-                } else {
-                    None
-                }
-            });
+            .and_then(|prs| prs.first().cloned());
 
-        //suite_data.rule_evaluations.
         send_violation_slack_message(
             slack,
             &suite_data,
@@ -245,8 +238,9 @@ pub async fn send_violation_slack_message(
     let max_ammann = slack.get_user_by_email("max.ammann@zoo.dev").await?;
 
     let slack_actor = suite_data
-        .get_slack_actor(slack, max_ammann.clone(), bot)
-        .await?;
+        .get_slack_actor(slack, bot)
+        .await?
+        .unwrap_or(max_ammann.clone());
 
     let content = suite_data.build_soc2_notification(&slack_actor, &pr, asset_level, config);
 
