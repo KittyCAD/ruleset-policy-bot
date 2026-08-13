@@ -235,6 +235,13 @@ pub async fn send_violation_slack_message(
     bot: &dyn RulesetBot,
     config: &BotConfig,
 ) -> Result<()> {
+    let mut suite_data = suite_data.clone();
+    if suite_data.suppress_synthetic_merge_linear_history_failure(resulting_commit.as_ref())
+        && !suite_data.has_failed_evaluations()
+    {
+        return Ok(());
+    }
+
     let max_ammann = slack.get_user_by_email("max.ammann@zoo.dev").await?;
 
     let slack_actor = suite_data

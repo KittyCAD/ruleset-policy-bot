@@ -1,23 +1,20 @@
 use async_trait::async_trait;
 use chrono::DateTime;
 use octocrab::models::pulls::PullRequest;
-use octocrab::models::repos::{
-    CommitAuthor, CommitObject, RepoCommit, RepoCommitPage, Verification,
-};
-use octocrab::models::{Author, UserId};
+use octocrab::models::repos::RepoCommit;
 use ruleset_policy_bot::soc2::asset_level::AssetLevel;
 use ruleset_policy_bot::soc2::rule_suit::{
     Enforcement, RuleEvalResult, RuleEvaluation, RuleSource, RuleSuite,
 };
-use ruleset_policy_bot::soc2::{create_octocrab, evaluate_rule_suites, process_rule_suites};
+use ruleset_policy_bot::soc2::{
+    create_octocrab, evaluate_rule_suites, process_rule_suites, send_violation_slack_message,
+};
 use ruleset_policy_bot::{
-    BotConfig, GitHubAppCredentials, GitHubAppInstallation, GitHubAuth, GithubRuleSuiteEvent,
-    NewGithubRuleSuiteEvent, RulesetBot, SlackClient, User,
+    BotConfig, GitHubAuth, GithubRuleSuiteEvent, NewGithubRuleSuiteEvent, RulesetBot, SlackClient,
 };
 use slack_morphism::{SlackChannelId, SlackMessageContent, SlackUser, SlackUserFlags, SlackUserId};
 use std::cell::RefCell;
 use std::sync::Mutex;
-use url::Host::Domain;
 
 const COMMIT: &str = // language=json
     r#"
@@ -120,7 +117,7 @@ struct MockRulesetBot {
 impl RulesetBot for MockRulesetBot {
     async fn find_rule_suite_by_github_id(
         &self,
-        github_id: &str,
+        _github_id: &str,
     ) -> anyhow::Result<Option<GithubRuleSuiteEvent>> {
         Ok(None)
     }
@@ -172,7 +169,7 @@ impl RulesetBot for MockRulesetBot {
 
     async fn get_email_by_github_username(
         &self,
-        github_username: &str,
+        _github_username: &str,
     ) -> anyhow::Result<Option<String>> {
         Ok(Some("max.ammann@zoo.dev".to_string()))
     }
@@ -222,6 +219,173 @@ impl SlackClient for MockSlackClient {
     }
 }
 
+fn synthetic_merge_commit() -> RepoCommit {
+    let mut commit: serde_json::Value =
+        serde_json::from_str(COMMIT).expect("commit fixture should be valid JSON");
+    let base_sha = "9cf761cb174bc6a7e7179a659ff4a67ee4ac2bb4";
+    let head_sha = "4d840b7d08941ac27014dee0c2e96bc5aad26d31";
+    commit["sha"] = "a1267306b44ab57752efe8b253a00ad149188560".into();
+    commit["commit"]["message"] = format!("Merge {head_sha} into {base_sha}").into();
+    commit["committer"]["login"] = "web-flow".into();
+    commit["parents"] = serde_json::json!([
+        {
+            "url": format!("https://api.github.com/repos/KittyCAD/modeling-app/commits/{base_sha}"),
+            "sha": base_sha,
+            "html_url": format!("https://github.com/KittyCAD/modeling-app/commit/{base_sha}")
+        },
+        {
+            "url": format!("https://api.github.com/repos/KittyCAD/modeling-app/commits/{head_sha}"),
+            "sha": head_sha,
+            "html_url": format!("https://github.com/KittyCAD/modeling-app/commit/{head_sha}")
+        }
+    ]);
+    serde_json::from_value(commit).expect("synthetic merge commit fixture should deserialize")
+}
+
+fn linear_history_rule_suite() -> RuleSuite {
+    RuleSuite {
+        id: 1923052992,
+        actor_id: Some(905221),
+        actor_name: Some("adamchalmers".to_string()),
+        before_sha: "9cf761cb174bc6a7e7179a659ff4a67ee4ac2bb4".to_string(),
+        after_sha: "a1267306b44ab57752efe8b253a00ad149188560".to_string(),
+        ref_name: "refs/heads/main".to_string(),
+        repository_id: 1108572605,
+        repository_name: "modeling-app".to_string(),
+        pushed_at: DateTime::parse_from_rfc3339("2026-08-13T22:03:32Z")
+            .expect("valid datetime")
+            .with_timezone(&chrono::Utc),
+        result: ruleset_policy_bot::soc2::rule_suit::RuleOutcome::Bypass,
+        evaluation_result: None,
+        rule_evaluations: Some(vec![
+            failed_evaluation("required_linear_history"),
+            RuleEvaluation {
+                rule_source: RuleSource {
+                    typ: "ruleset".to_string(),
+                    id: Some(9777775),
+                    name: Some("Test ruleset".to_string()),
+                },
+                enforcement: Enforcement::Active,
+                result: RuleEvalResult::Pass,
+                rule_type: "creation".to_string(),
+                details: None,
+            },
+        ]),
+    }
+}
+
+fn failed_evaluation(rule_type: &str) -> RuleEvaluation {
+    RuleEvaluation {
+        rule_source: RuleSource {
+            typ: "ruleset".to_string(),
+            id: Some(9777775),
+            name: Some("Test ruleset".to_string()),
+        },
+        enforcement: Enforcement::Active,
+        result: RuleEvalResult::Fail,
+        rule_type: rule_type.to_string(),
+        details: None,
+    }
+}
+
+fn test_config() -> BotConfig {
+    BotConfig {
+        github_org: "KittyCAD".to_string(),
+        github_web_base_url: "https://github.com".to_string(),
+        slack_soc2_channel: "#soc2".to_string(),
+        review_requirement_ruleset_id: None,
+        block_force_push_ruleset_id: None,
+        codeowners_ruleset_id: None,
+        in_scope_asset_level: AssetLevel::Playground..=AssetLevel::Production,
+        callout_asset_level: AssetLevel::Production..=AssetLevel::Production,
+        critical_asset_levels: AssetLevel::Production..=AssetLevel::Production,
+        github_auth: GitHubAuth::Token(String::new()),
+    }
+}
+
+async fn violation_messages(
+    suite: &RuleSuite,
+    commit: RepoCommit,
+) -> Vec<(String, SlackMessageContent)> {
+    let bot = MockRulesetBot {
+        events: Mutex::new(RefCell::new(vec![])),
+    };
+    let slack = MockSlackClient {
+        messages: Mutex::new(RefCell::new(vec![])),
+    };
+
+    send_violation_slack_message(
+        &slack,
+        suite,
+        Some(commit),
+        None,
+        AssetLevel::Production,
+        &bot,
+        &test_config(),
+    )
+    .await
+    .expect("violation should be handled");
+
+    slack
+        .messages
+        .into_inner()
+        .expect("messages should not be locked")
+        .into_inner()
+}
+
+#[tokio::test]
+async fn ignores_linear_history_failure_for_github_test_merge_commit() {
+    let messages = violation_messages(&linear_history_rule_suite(), synthetic_merge_commit()).await;
+
+    assert!(
+        messages.is_empty(),
+        "GitHub's prospective merge commit is not a policy violation"
+    );
+}
+
+#[tokio::test]
+async fn keeps_other_failures_from_github_test_merge_commit() {
+    let mut suite = linear_history_rule_suite();
+    suite
+        .rule_evaluations
+        .as_mut()
+        .expect("suite should have evaluations")
+        .push(failed_evaluation("pull_request"));
+
+    let messages = violation_messages(&suite, synthetic_merge_commit()).await;
+    assert_eq!(
+        messages.len(),
+        2,
+        "the actor and SOC2 owner should be notified"
+    );
+    for (_, message) in messages {
+        let fallback = message
+            .text
+            .expect("notification should have fallback text");
+        assert!(fallback.contains("pull_request"));
+        assert!(!fallback.contains("required_linear_history"));
+    }
+}
+
+#[tokio::test]
+async fn keeps_linear_history_failure_for_github_ui_merge_commit() {
+    let mut commit = synthetic_merge_commit();
+    commit.commit.message = "Merge pull request #12976 from KittyCAD/achalmers/kcl-v3".to_string();
+
+    let messages = violation_messages(&linear_history_rule_suite(), commit).await;
+    assert_eq!(
+        messages.len(),
+        2,
+        "the actor and SOC2 owner should be notified"
+    );
+    assert!(messages.iter().all(|(_, message)| {
+        message
+            .text
+            .as_ref()
+            .is_some_and(|text| text.contains("required_linear_history"))
+    }));
+}
+
 #[tokio::test]
 async fn test_updating_rule_suites() {
     let bot = MockRulesetBot {
@@ -253,7 +417,7 @@ async fn test_updating_rule_suites() {
 
     let events = bot.events.lock();
     let events = events.as_ref().expect("should not be locked").borrow();
-    let event = events.first().clone().expect("should have event");
+    let event = events.first().expect("should have event");
 
     assert!(!event.event_data.is_empty());
 
