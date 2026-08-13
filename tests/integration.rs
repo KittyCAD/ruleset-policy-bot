@@ -16,6 +16,10 @@ use slack_morphism::{SlackChannelId, SlackMessageContent, SlackUser, SlackUserFl
 use std::cell::RefCell;
 use std::sync::Mutex;
 
+const SYNTHETIC_MERGE_SHA: &str = "a1267306b44ab57752efe8b253a00ad149188560";
+const SYNTHETIC_BASE_SHA: &str = "9cf761cb174bc6a7e7179a659ff4a67ee4ac2bb4";
+const SYNTHETIC_HEAD_SHA: &str = "4d840b7d08941ac27014dee0c2e96bc5aad26d31";
+
 const COMMIT: &str = // language=json
     r#"
 {
@@ -222,24 +226,45 @@ impl SlackClient for MockSlackClient {
 fn synthetic_merge_commit() -> RepoCommit {
     let mut commit: serde_json::Value =
         serde_json::from_str(COMMIT).expect("commit fixture should be valid JSON");
-    let base_sha = "9cf761cb174bc6a7e7179a659ff4a67ee4ac2bb4";
-    let head_sha = "4d840b7d08941ac27014dee0c2e96bc5aad26d31";
-    commit["sha"] = "a1267306b44ab57752efe8b253a00ad149188560".into();
-    commit["commit"]["message"] = format!("Merge {head_sha} into {base_sha}").into();
+    commit["sha"] = SYNTHETIC_MERGE_SHA.into();
+    commit["commit"]["message"] =
+        format!("Merge {SYNTHETIC_HEAD_SHA} into {SYNTHETIC_BASE_SHA}").into();
     commit["committer"]["login"] = "web-flow".into();
     commit["parents"] = serde_json::json!([
         {
-            "url": format!("https://api.github.com/repos/KittyCAD/modeling-app/commits/{base_sha}"),
-            "sha": base_sha,
-            "html_url": format!("https://github.com/KittyCAD/modeling-app/commit/{base_sha}")
+            "url": format!("https://api.github.com/repos/KittyCAD/modeling-app/commits/{SYNTHETIC_BASE_SHA}"),
+            "sha": SYNTHETIC_BASE_SHA,
+            "html_url": format!("https://github.com/KittyCAD/modeling-app/commit/{SYNTHETIC_BASE_SHA}")
         },
         {
-            "url": format!("https://api.github.com/repos/KittyCAD/modeling-app/commits/{head_sha}"),
-            "sha": head_sha,
-            "html_url": format!("https://github.com/KittyCAD/modeling-app/commit/{head_sha}")
+            "url": format!("https://api.github.com/repos/KittyCAD/modeling-app/commits/{SYNTHETIC_HEAD_SHA}"),
+            "sha": SYNTHETIC_HEAD_SHA,
+            "html_url": format!("https://github.com/KittyCAD/modeling-app/commit/{SYNTHETIC_HEAD_SHA}")
         }
     ]);
     serde_json::from_value(commit).expect("synthetic merge commit fixture should deserialize")
+}
+
+fn pull_request_for_synthetic_head(merge_commit_sha: &str) -> PullRequest {
+    serde_json::from_value(serde_json::json!({
+        "url": "https://api.github.com/repos/KittyCAD/modeling-app/pulls/12976",
+        "id": 1,
+        "number": 12976,
+        "state": "closed",
+        "locked": false,
+        "maintainer_can_modify": false,
+        "merged_at": "2026-08-13T22:03:32Z",
+        "merge_commit_sha": merge_commit_sha,
+        "head": {
+            "ref": "achalmers/kcl-v3",
+            "sha": SYNTHETIC_HEAD_SHA
+        },
+        "base": {
+            "ref": "main",
+            "sha": SYNTHETIC_BASE_SHA
+        }
+    }))
+    .expect("pull request fixture should deserialize")
 }
 
 fn linear_history_rule_suite() -> RuleSuite {
@@ -247,8 +272,8 @@ fn linear_history_rule_suite() -> RuleSuite {
         id: 1923052992,
         actor_id: Some(905221),
         actor_name: Some("adamchalmers".to_string()),
-        before_sha: "9cf761cb174bc6a7e7179a659ff4a67ee4ac2bb4".to_string(),
-        after_sha: "a1267306b44ab57752efe8b253a00ad149188560".to_string(),
+        before_sha: SYNTHETIC_BASE_SHA.to_string(),
+        after_sha: SYNTHETIC_MERGE_SHA.to_string(),
         ref_name: "refs/heads/main".to_string(),
         repository_id: 1108572605,
         repository_name: "modeling-app".to_string(),
@@ -306,6 +331,7 @@ fn test_config() -> BotConfig {
 async fn violation_messages(
     suite: &RuleSuite,
     commit: RepoCommit,
+    pr: Option<PullRequest>,
 ) -> Vec<(String, SlackMessageContent)> {
     let bot = MockRulesetBot {
         events: Mutex::new(RefCell::new(vec![])),
@@ -318,7 +344,7 @@ async fn violation_messages(
         &slack,
         suite,
         Some(commit),
-        None,
+        pr,
         AssetLevel::Production,
         &bot,
         &test_config(),
@@ -335,7 +361,14 @@ async fn violation_messages(
 
 #[tokio::test]
 async fn ignores_linear_history_failure_for_github_test_merge_commit() {
-    let messages = violation_messages(&linear_history_rule_suite(), synthetic_merge_commit()).await;
+    let messages = violation_messages(
+        &linear_history_rule_suite(),
+        synthetic_merge_commit(),
+        Some(pull_request_for_synthetic_head(
+            "2460da6fd4c9eb62e8840429f797cff89c3e77e7",
+        )),
+    )
+    .await;
 
     assert!(
         messages.is_empty(),
@@ -352,7 +385,14 @@ async fn keeps_other_failures_from_github_test_merge_commit() {
         .expect("suite should have evaluations")
         .push(failed_evaluation("pull_request"));
 
-    let messages = violation_messages(&suite, synthetic_merge_commit()).await;
+    let messages = violation_messages(
+        &suite,
+        synthetic_merge_commit(),
+        Some(pull_request_for_synthetic_head(
+            "2460da6fd4c9eb62e8840429f797cff89c3e77e7",
+        )),
+    )
+    .await;
     assert_eq!(
         messages.len(),
         2,
@@ -372,7 +412,7 @@ async fn keeps_linear_history_failure_for_github_ui_merge_commit() {
     let mut commit = synthetic_merge_commit();
     commit.commit.message = "Merge pull request #12976 from KittyCAD/achalmers/kcl-v3".to_string();
 
-    let messages = violation_messages(&linear_history_rule_suite(), commit).await;
+    let messages = violation_messages(&linear_history_rule_suite(), commit, None).await;
     assert_eq!(
         messages.len(),
         2,
@@ -387,6 +427,29 @@ async fn keeps_linear_history_failure_for_github_ui_merge_commit() {
 }
 
 #[tokio::test]
+async fn keeps_linear_history_failure_for_real_merge_with_test_merge_title() {
+    let messages = violation_messages(
+        &linear_history_rule_suite(),
+        synthetic_merge_commit(),
+        Some(pull_request_for_synthetic_head(SYNTHETIC_MERGE_SHA)),
+    )
+    .await;
+
+    assert_eq!(
+        messages.len(),
+        2,
+        "an actual PR merge must not be mistaken for a prospective commit"
+    );
+    assert!(messages.iter().all(|(_, message)| {
+        message
+            .text
+            .as_ref()
+            .is_some_and(|text| text.contains("required_linear_history"))
+    }));
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_GH_TOKEN and live GitHub repository state"]
 async fn test_updating_rule_suites() {
     let bot = MockRulesetBot {
         events: Mutex::new(RefCell::new(vec![])),
@@ -428,6 +491,7 @@ async fn test_updating_rule_suites() {
 }
 
 #[tokio::test]
+#[ignore = "requires TEST_GH_TOKEN and live GitHub repository state"]
 async fn test_evaluate_rule_suites() {
     let rule_suite = RuleSuite {
         id: 1923052992,

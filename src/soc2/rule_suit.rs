@@ -88,15 +88,35 @@ impl RuleSuite {
         false
     }
 
-    pub(crate) fn suppress_synthetic_merge_linear_history_failure(
+    pub(crate) fn suppress_synthetic_merge_linear_history_notification(
         &mut self,
         resulting_commit: Option<&RepoCommit>,
+        pr: Option<&PullRequest>,
     ) -> bool {
-        let Some(commit) = resulting_commit.filter(|commit| is_github_test_merge_commit(commit))
-        else {
+        let Some(commit) = resulting_commit else {
             return false;
         };
-        if commit.sha != self.after_sha {
+        let Some(pr) = pr else {
+            return false;
+        };
+        let Some((base_sha, head_sha)) = github_test_merge_parent_shas(commit) else {
+            return false;
+        };
+
+        // While the PR is open, GitHub exposes the prospective commit as merge_commit_sha. After
+        // a squash or rebase merge, it replaces that SHA with the commit that actually landed.
+        let is_open_test_merge =
+            pr.merged_at.is_none() && pr.merge_commit_sha.as_deref() == Some(commit.sha.as_str());
+        let was_test_merge_for_completed_pr = pr.merged_at.as_ref() == Some(&self.pushed_at)
+            && pr.merge_commit_sha.as_deref() != Some(commit.sha.as_str());
+
+        if commit.sha != self.after_sha
+            || self.before_sha != base_sha
+            || self.ref_name != format!("refs/heads/{}", pr.base.ref_field)
+            || pr.base.sha != base_sha
+            || pr.head.sha != head_sha
+            || (!is_open_test_merge && !was_test_merge_for_completed_pr)
+        {
             return false;
         }
 
@@ -117,12 +137,10 @@ impl RuleSuite {
             );
         }
         ignored
-    }
-
-    pub(crate) fn has_failed_evaluations(&self) -> bool {
-        self.rule_evaluations
-            .as_ref()
-            .is_some_and(|evaluations| evaluations.iter().any(RuleEvaluation::is_failed))
+            && !self
+                .rule_evaluations
+                .as_ref()
+                .is_some_and(|evaluations| evaluations.iter().any(RuleEvaluation::is_failed))
     }
 
     /// Returns true if any rule evaluation satisfies the predicate. This ignored successful evaluations.
@@ -410,21 +428,22 @@ impl Display for RuleSuite {
     }
 }
 
-fn is_github_test_merge_commit(commit: &RepoCommit) -> bool {
+pub(crate) fn github_test_merge_parent_shas(commit: &RepoCommit) -> Option<(&str, &str)> {
     let [base, head] = commit.parents.as_slice() else {
-        return false;
+        return None;
     };
     let (Some(base_sha), Some(head_sha)) = (&base.sha, &head.sha) else {
-        return false;
+        return None;
     };
     let expected_subject = format!("Merge {head_sha} into {base_sha}");
 
-    commit
+    (commit
         .committer
         .as_ref()
         .map(|committer| committer.login.as_str())
         == Some("web-flow")
-        && commit.commit.message.lines().next() == Some(expected_subject.as_str())
+        && commit.commit.message.lines().next() == Some(expected_subject.as_str()))
+    .then_some((base_sha.as_str(), head_sha.as_str()))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]

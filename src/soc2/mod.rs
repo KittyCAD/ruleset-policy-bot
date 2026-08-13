@@ -13,7 +13,7 @@ use crate::{
     BotConfig, GitHubAuth, NewGithubRuleSuiteEvent, RulesetBot, SlackClient,
     soc2::{
         asset_level::{AssetLevel, CustomPropertyExt},
-        rule_suit::{RuleOutcome, RuleSuite},
+        rule_suit::{RuleOutcome, RuleSuite, github_test_merge_parent_shas},
     },
 };
 
@@ -124,13 +124,32 @@ async fn update_rule_suites(
             .await
             .ok();
 
-        let prs: Option<Vec<PullRequest>> = octocrab
+        let mut prs: Option<Vec<PullRequest>> = octocrab
             .commits(github_org, repository_name)
             .associated_pull_requests(PullRequestTarget::Sha(full_result.after_sha.clone()))
             .send()
             .await
             .map(|page: Page<PullRequest>| page.items)
             .ok();
+
+        if prs.as_ref().is_none_or(Vec::is_empty)
+            && let Some((base_sha, head_sha)) = resulting_commit
+                .as_ref()
+                .and_then(github_test_merge_parent_shas)
+        {
+            prs = octocrab
+                .commits(github_org, repository_name)
+                .associated_pull_requests(PullRequestTarget::Sha(head_sha.to_string()))
+                .send()
+                .await
+                .map(|page: Page<PullRequest>| {
+                    page.items
+                        .into_iter()
+                        .filter(|pr| pr.base.sha == base_sha && pr.head.sha == head_sha)
+                        .collect()
+                })
+                .ok();
+        }
 
         // Insert rule suite if id does not yet exist.
         let Ok(lookup) = bot
@@ -236,9 +255,10 @@ pub async fn send_violation_slack_message(
     config: &BotConfig,
 ) -> Result<()> {
     let mut suite_data = suite_data.clone();
-    if suite_data.suppress_synthetic_merge_linear_history_failure(resulting_commit.as_ref())
-        && !suite_data.has_failed_evaluations()
-    {
+    if suite_data.suppress_synthetic_merge_linear_history_notification(
+        resulting_commit.as_ref(),
+        pr.as_ref(),
+    ) {
         return Ok(());
     }
 
