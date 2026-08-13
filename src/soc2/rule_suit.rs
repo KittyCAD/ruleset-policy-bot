@@ -7,7 +7,7 @@ use octocrab::models::{pulls::PullRequest, repos::RepoCommit};
 use serde::{Deserialize, Serialize};
 use slack_morphism::prelude::*;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuleSuite {
     pub id: i64,
 
@@ -86,6 +86,43 @@ impl RuleSuite {
         }
 
         false
+    }
+
+    pub(crate) fn suppress_synthetic_merge_linear_history_failure(
+        &mut self,
+        resulting_commit: Option<&RepoCommit>,
+    ) -> bool {
+        let Some(commit) = resulting_commit.filter(|commit| is_github_test_merge_commit(commit))
+        else {
+            return false;
+        };
+        if commit.sha != self.after_sha {
+            return false;
+        }
+
+        let Some(evaluations) = self.rule_evaluations.as_mut() else {
+            return false;
+        };
+
+        let original_len = evaluations.len();
+        evaluations.retain(|evaluation| {
+            !(evaluation.is_failed() && evaluation.rule_type == "required_linear_history")
+        });
+
+        let ignored = original_len != evaluations.len();
+        if ignored {
+            tracing::info!(
+                commit_sha = commit.sha,
+                "ignored required linear history failure for GitHub test merge commit"
+            );
+        }
+        ignored
+    }
+
+    pub(crate) fn has_failed_evaluations(&self) -> bool {
+        self.rule_evaluations
+            .as_ref()
+            .is_some_and(|evaluations| evaluations.iter().any(RuleEvaluation::is_failed))
     }
 
     /// Returns true if any rule evaluation satisfies the predicate. This ignored successful evaluations.
@@ -224,7 +261,7 @@ impl RuleSuite {
                         value: Some(format!(
                             "<{}|`{}`> in `{}`.",
                             commit_url,
-                            &self.after_sha.get(..7).unwrap_or("commit"),
+                            self.after_sha.get(..7).unwrap_or("commit"),
                             self.repository_name
                         )),
                         short: Some(true),
@@ -352,7 +389,7 @@ impl Display for RuleSuite {
                     f,
                     " with <{}|`{}`> in `{}`.",
                     commit_url,
-                    &self.after_sha.get(..7).unwrap_or("commit"),
+                    self.after_sha.get(..7).unwrap_or("commit"),
                     self.repository_name
                 )?;
 
@@ -373,7 +410,24 @@ impl Display for RuleSuite {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+fn is_github_test_merge_commit(commit: &RepoCommit) -> bool {
+    let [base, head] = commit.parents.as_slice() else {
+        return false;
+    };
+    let (Some(base_sha), Some(head_sha)) = (&base.sha, &head.sha) else {
+        return false;
+    };
+    let expected_subject = format!("Merge {head_sha} into {base_sha}");
+
+    commit
+        .committer
+        .as_ref()
+        .map(|committer| committer.login.as_str())
+        == Some("web-flow")
+        && commit.commit.message.lines().next() == Some(expected_subject.as_str())
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum RuleOutcome {
     Pass,
