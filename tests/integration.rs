@@ -245,15 +245,23 @@ fn synthetic_merge_commit() -> RepoCommit {
     serde_json::from_value(commit).expect("synthetic merge commit fixture should deserialize")
 }
 
-fn pull_request_for_synthetic_head(merge_commit_sha: &str) -> PullRequest {
+fn pull_request_for_synthetic_head(
+    merge_commit_sha: Option<&str>,
+    merged_at: Option<&str>,
+) -> PullRequest {
+    let state = if merged_at.is_some() {
+        "closed"
+    } else {
+        "open"
+    };
     serde_json::from_value(serde_json::json!({
         "url": "https://api.github.com/repos/KittyCAD/modeling-app/pulls/12976",
         "id": 1,
         "number": 12976,
-        "state": "closed",
+        "state": state,
         "locked": false,
         "maintainer_can_modify": false,
-        "merged_at": "2026-08-13T22:03:32Z",
+        "merged_at": merged_at,
         "merge_commit_sha": merge_commit_sha,
         "head": {
             "ref": "achalmers/kcl-v3",
@@ -365,7 +373,8 @@ async fn ignores_linear_history_failure_for_github_test_merge_commit() {
         &linear_history_rule_suite(),
         synthetic_merge_commit(),
         Some(pull_request_for_synthetic_head(
-            "2460da6fd4c9eb62e8840429f797cff89c3e77e7",
+            Some("2460da6fd4c9eb62e8840429f797cff89c3e77e7"),
+            Some("2026-08-13T22:03:32Z"),
         )),
     )
     .await;
@@ -389,7 +398,8 @@ async fn keeps_other_failures_from_github_test_merge_commit() {
         &suite,
         synthetic_merge_commit(),
         Some(pull_request_for_synthetic_head(
-            "2460da6fd4c9eb62e8840429f797cff89c3e77e7",
+            Some("2460da6fd4c9eb62e8840429f797cff89c3e77e7"),
+            Some("2026-08-13T22:03:32Z"),
         )),
     )
     .await;
@@ -431,7 +441,10 @@ async fn keeps_linear_history_failure_for_real_merge_with_test_merge_title() {
     let messages = violation_messages(
         &linear_history_rule_suite(),
         synthetic_merge_commit(),
-        Some(pull_request_for_synthetic_head(SYNTHETIC_MERGE_SHA)),
+        Some(pull_request_for_synthetic_head(
+            Some(SYNTHETIC_MERGE_SHA),
+            Some("2026-08-13T22:03:32Z"),
+        )),
     )
     .await;
 
@@ -449,7 +462,62 @@ async fn keeps_linear_history_failure_for_real_merge_with_test_merge_title() {
 }
 
 #[tokio::test]
-#[ignore = "requires TEST_GH_TOKEN and live GitHub repository state"]
+async fn ignores_test_merge_when_pull_request_base_sha_is_stale() {
+    let mut pr = pull_request_for_synthetic_head(
+        Some("2460da6fd4c9eb62e8840429f797cff89c3e77e7"),
+        Some("2026-08-13T22:03:32Z"),
+    );
+    pr.base.sha = "85c12dc51bbd517d5a9b8068e6f36e789e8ef314".to_string();
+
+    let messages = violation_messages(
+        &linear_history_rule_suite(),
+        synthetic_merge_commit(),
+        Some(pr),
+    )
+    .await;
+
+    assert!(
+        messages.is_empty(),
+        "a PR's recorded base SHA can predate the prospective merge base"
+    );
+}
+
+#[tokio::test]
+async fn keeps_linear_history_failure_when_merge_commit_sha_is_missing() {
+    let messages = violation_messages(
+        &linear_history_rule_suite(),
+        synthetic_merge_commit(),
+        Some(pull_request_for_synthetic_head(
+            None,
+            Some("2026-08-13T22:03:32Z"),
+        )),
+    )
+    .await;
+
+    assert_eq!(
+        messages.len(),
+        2,
+        "missing PR data is not evidence that a different commit landed"
+    );
+}
+
+#[tokio::test]
+async fn ignores_test_merge_for_open_pull_request() {
+    let messages = violation_messages(
+        &linear_history_rule_suite(),
+        synthetic_merge_commit(),
+        Some(pull_request_for_synthetic_head(
+            Some(SYNTHETIC_MERGE_SHA),
+            None,
+        )),
+    )
+    .await;
+
+    assert!(messages.is_empty());
+}
+
+#[tokio::test]
+#[ignore = "requires GH_TOKEN with ruleset access and live GitHub repository state"]
 async fn test_updating_rule_suites() {
     let bot = MockRulesetBot {
         events: Mutex::new(RefCell::new(vec![])),
@@ -491,7 +559,7 @@ async fn test_updating_rule_suites() {
 }
 
 #[tokio::test]
-#[ignore = "requires TEST_GH_TOKEN and live GitHub repository state"]
+#[ignore = "requires GH_TOKEN with ruleset access and live GitHub repository state"]
 async fn test_evaluate_rule_suites() {
     let rule_suite = RuleSuite {
         id: 1923052992,

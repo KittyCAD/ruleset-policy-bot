@@ -108,12 +108,14 @@ impl RuleSuite {
         let is_open_test_merge =
             pr.merged_at.is_none() && pr.merge_commit_sha.as_deref() == Some(commit.sha.as_str());
         let was_test_merge_for_completed_pr = pr.merged_at.as_ref() == Some(&self.pushed_at)
-            && pr.merge_commit_sha.as_deref() != Some(commit.sha.as_str());
+            && pr
+                .merge_commit_sha
+                .as_deref()
+                .is_some_and(|sha| sha != commit.sha);
 
         if commit.sha != self.after_sha
             || self.before_sha != base_sha
             || self.ref_name != format!("refs/heads/{}", pr.base.ref_field)
-            || pr.base.sha != base_sha
             || pr.head.sha != head_sha
             || (!is_open_test_merge && !was_test_merge_for_completed_pr)
         {
