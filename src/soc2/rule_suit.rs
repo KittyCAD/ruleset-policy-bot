@@ -7,7 +7,7 @@ use octocrab::models::{pulls::PullRequest, repos::RepoCommit};
 use serde::{Deserialize, Serialize};
 use slack_morphism::prelude::*;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuleSuite {
     pub id: i64,
 
@@ -86,6 +86,63 @@ impl RuleSuite {
         }
 
         false
+    }
+
+    pub(crate) fn suppress_synthetic_merge_linear_history_notification(
+        &mut self,
+        resulting_commit: Option<&RepoCommit>,
+        pr: Option<&PullRequest>,
+    ) -> bool {
+        let Some(commit) = resulting_commit else {
+            return false;
+        };
+        let Some(pr) = pr else {
+            return false;
+        };
+        let Some((base_sha, head_sha)) = github_test_merge_parent_shas(commit) else {
+            return false;
+        };
+
+        // While the PR is open, GitHub exposes the prospective commit as merge_commit_sha. After
+        // a squash or rebase merge, it replaces that SHA with the commit that actually landed.
+        let is_open_test_merge =
+            pr.merged_at.is_none() && pr.merge_commit_sha.as_deref() == Some(commit.sha.as_str());
+        let was_test_merge_for_completed_pr = pr.merged_at.as_ref() == Some(&self.pushed_at)
+            && pr
+                .merge_commit_sha
+                .as_deref()
+                .is_some_and(|sha| sha != commit.sha);
+
+        if commit.sha != self.after_sha
+            || self.before_sha != base_sha
+            || self.ref_name != format!("refs/heads/{}", pr.base.ref_field)
+            || pr.head.sha != head_sha
+            || (!is_open_test_merge && !was_test_merge_for_completed_pr)
+        {
+            return false;
+        }
+
+        let Some(evaluations) = self.rule_evaluations.as_mut() else {
+            return false;
+        };
+
+        let original_len = evaluations.len();
+        evaluations.retain(|evaluation| {
+            !(evaluation.is_failed() && evaluation.rule_type == "required_linear_history")
+        });
+
+        let ignored = original_len != evaluations.len();
+        if ignored {
+            tracing::info!(
+                commit_sha = commit.sha,
+                "ignored required linear history failure for GitHub test merge commit"
+            );
+        }
+        ignored
+            && !self
+                .rule_evaluations
+                .as_ref()
+                .is_some_and(|evaluations| evaluations.iter().any(RuleEvaluation::is_failed))
     }
 
     /// Returns true if any rule evaluation satisfies the predicate. This ignored successful evaluations.
@@ -224,7 +281,7 @@ impl RuleSuite {
                         value: Some(format!(
                             "<{}|`{}`> in `{}`.",
                             commit_url,
-                            &self.after_sha.get(..7).unwrap_or("commit"),
+                            self.after_sha.get(..7).unwrap_or("commit"),
                             self.repository_name
                         )),
                         short: Some(true),
@@ -352,7 +409,7 @@ impl Display for RuleSuite {
                     f,
                     " with <{}|`{}`> in `{}`.",
                     commit_url,
-                    &self.after_sha.get(..7).unwrap_or("commit"),
+                    self.after_sha.get(..7).unwrap_or("commit"),
                     self.repository_name
                 )?;
 
@@ -373,7 +430,25 @@ impl Display for RuleSuite {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub(crate) fn github_test_merge_parent_shas(commit: &RepoCommit) -> Option<(&str, &str)> {
+    let [base, head] = commit.parents.as_slice() else {
+        return None;
+    };
+    let (Some(base_sha), Some(head_sha)) = (&base.sha, &head.sha) else {
+        return None;
+    };
+    let expected_subject = format!("Merge {head_sha} into {base_sha}");
+
+    (commit
+        .committer
+        .as_ref()
+        .map(|committer| committer.login.as_str())
+        == Some("web-flow")
+        && commit.commit.message.lines().next() == Some(expected_subject.as_str()))
+    .then_some((base_sha.as_str(), head_sha.as_str()))
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum RuleOutcome {
     Pass,

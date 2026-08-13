@@ -13,7 +13,7 @@ use crate::{
     BotConfig, GitHubAuth, NewGithubRuleSuiteEvent, RulesetBot, SlackClient,
     soc2::{
         asset_level::{AssetLevel, CustomPropertyExt},
-        rule_suit::{RuleOutcome, RuleSuite},
+        rule_suit::{RuleOutcome, RuleSuite, github_test_merge_parent_shas},
     },
 };
 
@@ -124,13 +124,29 @@ async fn update_rule_suites(
             .await
             .ok();
 
-        let prs: Option<Vec<PullRequest>> = octocrab
+        let mut prs: Option<Vec<PullRequest>> = octocrab
             .commits(github_org, repository_name)
             .associated_pull_requests(PullRequestTarget::Sha(full_result.after_sha.clone()))
             .send()
             .await
             .map(|page: Page<PullRequest>| page.items)
             .ok();
+
+        if prs.as_ref().is_none_or(Vec::is_empty)
+            && let Some((_, head_sha)) = resulting_commit
+                .as_ref()
+                .and_then(github_test_merge_parent_shas)
+        {
+            prs = octocrab
+                .commits(github_org, repository_name)
+                .associated_pull_requests(PullRequestTarget::Sha(head_sha.to_string()))
+                .send()
+                .await
+                .map(|page: Page<PullRequest>| {
+                    matching_pull_requests(page.items, head_sha, &full_result.ref_name)
+                })
+                .ok();
+        }
 
         // Insert rule suite if id does not yet exist.
         let Ok(lookup) = bot
@@ -163,6 +179,21 @@ async fn update_rule_suites(
     }
 
     Ok(())
+}
+
+fn matching_pull_requests(
+    pull_requests: Vec<PullRequest>,
+    head_sha: &str,
+    target_ref: &str,
+) -> Vec<PullRequest> {
+    let Some(base_ref) = target_ref.strip_prefix("refs/heads/") else {
+        return Vec::new();
+    };
+
+    pull_requests
+        .into_iter()
+        .filter(|pr| pr.head.sha == head_sha && pr.base.ref_field == base_ref)
+        .collect()
 }
 
 #[tracing::instrument(skip(bot, config, slack, octocrab))]
@@ -235,6 +266,14 @@ pub async fn send_violation_slack_message(
     bot: &dyn RulesetBot,
     config: &BotConfig,
 ) -> Result<()> {
+    let mut suite_data = suite_data.clone();
+    if suite_data.suppress_synthetic_merge_linear_history_notification(
+        resulting_commit.as_ref(),
+        pr.as_ref(),
+    ) {
+        return Ok(());
+    }
+
     let max_ammann = slack.get_user_by_email("max.ammann@zoo.dev").await?;
 
     let slack_actor = suite_data
@@ -280,9 +319,29 @@ pub async fn send_violation_slack_message(
 mod tests {
     use std::fs;
 
+    use octocrab::models::pulls::PullRequest;
     use serde_json;
 
-    use crate::soc2::rule_suit::RuleSuite;
+    use crate::soc2::{matching_pull_requests, rule_suit::RuleSuite};
+
+    fn pull_request(number: u64, base_ref: &str, base_sha: &str, head_sha: &str) -> PullRequest {
+        serde_json::from_value(serde_json::json!({
+            "url": format!("https://api.github.com/repos/KittyCAD/modeling-app/pulls/{number}"),
+            "id": number,
+            "number": number,
+            "locked": false,
+            "maintainer_can_modify": false,
+            "head": {
+                "ref": "feature",
+                "sha": head_sha
+            },
+            "base": {
+                "ref": base_ref,
+                "sha": base_sha
+            }
+        }))
+        .expect("pull request fixture should deserialize")
+    }
 
     /// Load JSON fixture from the `tests/fixtures` directory.
     fn load_fixture(name: &str) -> String {
@@ -322,5 +381,35 @@ mod tests {
 
         let _parsed: Vec<RuleSuite> =
             serde_json::from_str(&json_str).expect("Failed to deserialize RuleSuite fixture");
+    }
+
+    #[test]
+    fn matches_test_merge_pr_by_head_and_target_ref() {
+        let head_sha = "59383581b511a93a9d0fb51a2878fba1ac9dd2da";
+        let pull_requests = vec![
+            pull_request(
+                12831,
+                "main",
+                "85c12dc51bbd517d5a9b8068e6f36e789e8ef314",
+                head_sha,
+            ),
+            pull_request(
+                12982,
+                "main",
+                "787ae4b9406189327c91c75a9f1f4744b40a2d91",
+                "360f8fc350d57662b03f8bd67f55aedf0f236861",
+            ),
+            pull_request(
+                13000,
+                "release",
+                "787ae4b9406189327c91c75a9f1f4744b40a2d91",
+                head_sha,
+            ),
+        ];
+
+        let matching = matching_pull_requests(pull_requests, head_sha, "refs/heads/main");
+
+        assert_eq!(matching.len(), 1);
+        assert_eq!(matching[0].number, 12831);
     }
 }
